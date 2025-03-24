@@ -4,14 +4,41 @@ import importlib.util
 import time
 from IPython.display import clear_output
 import random
-# This environment allows you to verify whether your program runs correctly during testing, 
-# as it follows the same observation format from `env.reset()` and `env.step()`. 
-# However, keep in mind that this is just a simplified environment. 
+# This environment allows you to verify whether your program runs correctly during testing,
+# as it follows the same observation format from `env.reset()` and `env.step()`.
+# However, keep in mind that this is just a simplified environment.
 # The full specifications for the real testing environment can be found in the provided spec.
-# 
-# You are free to modify this file to better match the real environment and train your own agent. 
+#
+# You are free to modify this file to better match the real environment and train your own agent.
 # Good luck!
 
+def generate_stations(grid_size):
+    def is_adjacent(pos1, pos2):
+        return abs(pos1[0] - pos2[0]) <= 1 and abs(pos1[1] - pos2[1]) <= 1
+
+    stations = []
+    all_positions = [(i, j) for i in range(grid_size) for j in range(grid_size)]
+    random.shuffle(all_positions)
+
+    for pos in all_positions:
+        if all(not is_adjacent(pos, existing) for existing in stations):
+            stations.append(pos)
+            if len(stations) == 4:
+                break
+
+    return stations
+
+def generate_obstacles(grid_size, num_obstacles, stations):
+    obstacles = set()
+    all_positions = {(i, j) for i in range(grid_size) for j in range(grid_size)}
+
+    available_positions = list(all_positions - set(stations))
+    random.shuffle(available_positions)
+
+    for pos in available_positions[:num_obstacles]:
+        obstacles.add(pos)
+
+    return obstacles
 
 class SimpleTaxiEnv():
     def __init__(self, grid_size=5, fuel_limit=50):
@@ -22,18 +49,20 @@ class SimpleTaxiEnv():
         self.fuel_limit = fuel_limit
         self.current_fuel = fuel_limit
         self.passenger_picked_up = False
-        
+
         self.stations = [(0, 0), (0, self.grid_size - 1), (self.grid_size - 1, 0), (self.grid_size - 1, self.grid_size - 1)]
         self.passenger_loc = None
-       
-        self.obstacles = set()  # No obstacles in simple version
+
+        self.obstacles = set()
         self.destination = None
 
     def reset(self):
         """Reset the environment, ensuring Taxi, passenger, and destination are not overlapping obstacles"""
         self.current_fuel = self.fuel_limit
         self.passenger_picked_up = False
-        
+
+        self.stations = generate_stations(self.grid_size)
+        self.obstacles = generate_obstacles(self.grid_size, self.grid_size, self.stations)
 
         available_positions = [
             (x, y) for x in range(self.grid_size) for y in range(self.grid_size)
@@ -41,13 +70,12 @@ class SimpleTaxiEnv():
         ]
 
         self.taxi_pos = random.choice(available_positions)
-        
+
         self.passenger_loc = random.choice([pos for pos in self.stations])
-        
-        
+
         possible_destinations = [s for s in self.stations if s != self.passenger_loc]
         self.destination = random.choice(possible_destinations)
-        
+
         return self.get_state(), {}
 
     def step(self, action):
@@ -63,8 +91,8 @@ class SimpleTaxiEnv():
             next_col += 1
         elif action == 3:  # Move Left
             next_col -= 1
-        
-        
+
+
         if action in [0, 1, 2, 3]:  # Only movement actions should be checked
             if (next_row, next_col) in self.obstacles or not (0 <= next_row < self.grid_size and 0 <= next_col < self.grid_size):
                 reward -=5
@@ -76,9 +104,9 @@ class SimpleTaxiEnv():
             if action == 4:  # PICKUP
                 if self.taxi_pos == self.passenger_loc:
                     self.passenger_picked_up = True
-                    self.passenger_loc = self.taxi_pos  
+                    self.passenger_loc = self.taxi_pos
                 else:
-                    reward = -10  
+                    reward = -10
             elif action == 5:  # DROPOFF
                 if self.passenger_picked_up:
                     if self.taxi_pos == self.destination:
@@ -90,14 +118,14 @@ class SimpleTaxiEnv():
                     self.passenger_loc = self.taxi_pos
                 else:
                     reward -=10
-                    
-        reward -= 0.1  
+
+        reward -= 0.1
 
         self.current_fuel -= 1
         if self.current_fuel <= 0:
             return self.get_state(), reward -10, True, {}
 
-        
+
 
         return self.get_state(), reward, False, {}
 
@@ -106,7 +134,7 @@ class SimpleTaxiEnv():
         taxi_row, taxi_col = self.taxi_pos
         passenger_row, passenger_col = self.passenger_loc
         destination_row, destination_col = self.destination
-        
+
         obstacle_north = int(taxi_row == 0 or (taxi_row-1, taxi_col) in self.obstacles)
         obstacle_south = int(taxi_row == self.grid_size - 1 or (taxi_row+1, taxi_col) in self.obstacles)
         obstacle_east  = int(taxi_col == self.grid_size - 1 or (taxi_row, taxi_col+1) in self.obstacles)
@@ -118,7 +146,7 @@ class SimpleTaxiEnv():
         passenger_loc_west  = int((taxi_row, taxi_col - 1) == self.passenger_loc)
         passenger_loc_middle  = int( (taxi_row, taxi_col) == self.passenger_loc)
         passenger_look = passenger_loc_north or passenger_loc_south or passenger_loc_east or passenger_loc_west or passenger_loc_middle
-       
+
         destination_loc_north = int( (taxi_row - 1, taxi_col) == self.destination)
         destination_loc_south = int( (taxi_row + 1, taxi_col) == self.destination)
         destination_loc_east  = int( (taxi_row, taxi_col + 1) == self.destination)
@@ -126,36 +154,14 @@ class SimpleTaxiEnv():
         destination_loc_middle  = int( (taxi_row, taxi_col) == self.destination)
         destination_look = destination_loc_north or destination_loc_south or destination_loc_east or destination_loc_west or destination_loc_middle
 
-        
+
         state = (taxi_row, taxi_col, self.stations[0][0],self.stations[0][1] ,self.stations[1][0],self.stations[1][1],self.stations[2][0],self.stations[2][1],self.stations[3][0],self.stations[3][1],obstacle_north, obstacle_south, obstacle_east, obstacle_west, passenger_look, destination_look)
         return state
     def render_env(self, taxi_pos,   action=None, step=None, fuel=None):
         clear_output(wait=True)
 
-        grid = [['.'] * self.grid_size for _ in range(self.grid_size)]
-        
-        '''
-        # Place passenger
-        py, px = passenger_pos
-        if 0 <= px < self.grid_size and 0 <= py < self.grid_size:
-            grid[py][px] = 'P'
-        '''
-        
-        
-        grid[0][0]='R'
-        grid[0][4]='G'
-        grid[4][0]='Y'
-        grid[4][4]='B'
-        '''
-        # Place destination
-        dy, dx = destination_pos
-        if 0 <= dx < self.grid_size and 0 <= dy < self.grid_size:
-            grid[dy][dx] = 'D'
-        '''
         # Place taxi
         ty, tx = taxi_pos
-        if 0 <= tx < self.grid_size and 0 <= ty < self.grid_size:
-            grid[ty][tx] = '🚖'
 
         # Print step info
         print(f"\nStep: {step}")
@@ -165,10 +171,6 @@ class SimpleTaxiEnv():
         print(f"Fuel Left: {fuel}")
         print(f"Last Action: {self.get_action_name(action)}\n")
 
-        # Print grid
-        for row in grid:
-            print(" ".join(row))
-        print("\n")
 
     def get_action_name(self, action):
         """Returns a human-readable action name."""
@@ -187,7 +189,7 @@ def run_agent(agent_file, env_config, render=False):
     done = False
     step_count = 0
     stations = [(0, 0), (0, 4), (4, 0), (4,4)]
-    
+
     taxi_row, taxi_col, _,_,_,_,_,_,_,_,obstacle_north, obstacle_south, obstacle_east, obstacle_west, passenger_look, destination_look = obs
 
     if render:
@@ -195,8 +197,8 @@ def run_agent(agent_file, env_config, render=False):
                        action=None, step=step_count, fuel=env.current_fuel)
         time.sleep(0.5)
     while not done:
-        
-        
+
+
         action = student_agent.get_action(obs)
 
         obs, reward, done, _ = env.step(action)
@@ -217,6 +219,6 @@ if __name__ == "__main__":
     env_config = {
         "fuel_limit": 5000
     }
-    
+
     agent_score = run_agent("student_agent.py", env_config, render=True)
     print(f"Final Score: {agent_score}")
